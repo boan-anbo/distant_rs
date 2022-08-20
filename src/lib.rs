@@ -1,5 +1,6 @@
 pub mod distant_client;
 pub mod responses;
+pub mod util;
 
 fn add(left: usize, right: usize) -> usize {
     left + right

@@ -5,6 +5,7 @@ use elasticsearch::cat::{CatIndices, CatIndicesParts};
 use elasticsearch::http::StatusCode;
 use elasticsearch::http::transport::BuildError;
 use serde_json::{json, Value};
+use crate::responses::check_if_exist::CheckIfFileExistsResult;
 use crate::responses::index_info::IndexInfo;
 use crate::responses::search_result::{DistantSearchResult};
 
@@ -101,7 +102,6 @@ impl DistantClient {
                 Err(e)
             }
         }
-
     }
 
     // scroll
@@ -145,6 +145,40 @@ impl DistantClient {
             }
         }
     }
+    // check if file name exists in the elasticsearch
+    pub async fn check_if_exist(&self, index: Vec<&str>, file_name: &str) -> Result<bool, Error> {
+        let exists = self.client
+            .search(SearchParts::Index(&index[..]))
+            .size(0)
+            .body(json! {
+                {
+                   "query":
+                        {"term":
+                            {
+                              "fileName.keyword": file_name
+                            }
+                        }
+                }
+            }).send().await;
+        match exists {
+            Ok(exists) => {
+                let response_body = exists.json::<CheckIfFileExistsResult>().await;
+                match response_body {
+                    Ok(response_body) => {
+                        Ok(response_body.hits.total.value > 0)
+                    }
+                    Err(e) => {
+                        println!("{:?}", e);
+                        Err(e)
+                    }
+                }
+            }
+            Err(e) => {
+                println!("{:?}", e);
+                Err(e)
+            }
+        }
+    }
 }
 
 // tests
@@ -173,7 +207,6 @@ mod test {
         // assert result is not null
         assert!(result.is_ok());
         assert!(result.unwrap().scroll_id.len() > 0);
-
     }
 
     // test scroll
@@ -192,7 +225,6 @@ mod test {
         assert_eq!(scroll_id_from_first.as_ref(), scroll_result.as_ref().unwrap().scroll_id);
         // assert different first result
         assert_ne!(result.unwrap().hits.hits[0].id, scroll_result.as_ref().unwrap().hits.hits[0].id);
-
     }
 
 
@@ -206,6 +238,24 @@ mod test {
         for index in result {
             println!("Index: {:?}, docs: {:?}", index.index, index.docs_count);
         }
+    }
+
+    // test if file exists
+    #[tokio::test]
+    async fn test_check_if_exist() {
+        let distant_client = DistantClient::new().await;
+        let result = distant_client.check_if_exist(
+            vec!["distant_rl_history"]
+            , "test").await.unwrap();
+        assert_eq!(result, false);
+        let result_found = distant_client.check_if_exist(
+            vec!["distant_rl_history"]
+            , "[R] [[JTArtificial08]] Jones, TimM - 2008 - Artificial intelligence - a systems approach.pdf").await.unwrap();
+        assert_eq!(result_found, true);
+        let result_not_found = distant_client.check_if_exist(
+            vec!["distant_rl_history"]
+            , "[R] [[JTArtificial08]] Jones, TimM - 2008 - Artificial intelligence - a systems approach.pd").await.unwrap();
+        assert_eq!(result_not_found, false);
     }
 }
 
