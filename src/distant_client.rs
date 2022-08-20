@@ -51,17 +51,15 @@ impl DistantClient {
             .body(json! {
                  {
             "query": {
-                "query_string": {
-                    "query": query,
-                    "fields": [
-                             "text^5",
-                             "fileName^1"
-                         ],
-                    "tie_breaker": 0
-                }
+               "multi_match": {
+                 "query": query,
+                "fields": ["text^5", "fileName"]
+                                // "operator": "and"
+
+                             // "fuzziness": "AUTO",
+             }
             },
-           "cutoff_frequency": 0.001,
-            "low_freq_operator": "and",
+
             "sort": [
                 { "_score": { "order": "desc" } },
                 // {"created": {"order": "asc"}}
@@ -207,7 +205,10 @@ mod test {
         let distant_client = DistantClient::new().await;
         let result = distant_client.search(
             vec!["distant_rl_history"]
-            , "test").await;
+            , "Minsky Behaviorism").await;
+
+        let result_num = result.as_ref().unwrap().hits.total.value;
+        println!("Results: {:?}", result_num);
 
         // assert result is not null
         assert!(result.is_ok());
