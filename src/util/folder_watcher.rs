@@ -17,7 +17,7 @@ async fn start_folder_watcher() -> notify::Result<(RecommendedWatcher, Receiver<
     Ok((watcher, rx))
 }
 
-async fn async_watch<P: AsRef<Path>>(path: P) -> notify::Result<()> {
+pub async fn async_watch<P: AsRef<Path>>(path: P) -> notify::Result<()> {
     let (mut watcher, mut rx) = start_folder_watcher().await?;
 
     // Add a path to be watched. All files and directories at that path and
