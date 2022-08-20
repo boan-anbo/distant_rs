@@ -53,10 +53,15 @@ impl DistantClient {
             "query": {
                 "query_string": {
                     "query": query,
-                    "fields": ["text^5", "fileName"],
+                    "fields": [
+                             "text^5",
+                             "fileName^1"
+                         ],
                     "tie_breaker": 0
                 }
             },
+           "cutoff_frequency": 0.001,
+            "low_freq_operator": "and",
             "sort": [
                 { "_score": { "order": "desc" } },
                 // {"created": {"order": "asc"}}
