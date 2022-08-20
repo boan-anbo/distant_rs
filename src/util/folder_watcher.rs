@@ -34,7 +34,7 @@ async fn async_watch<P: AsRef<Path>>(path: P) -> notify::Result<()> {
     Ok(())
 }
 
-pub async fn spawn_folder_watcher(path: String) {
+pub fn spawn_folder_watcher(path: String) {
     tokio::spawn(async move {
         // First start folder watcher
         let path = Path::new(&path);
