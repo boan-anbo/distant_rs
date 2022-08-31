@@ -2,6 +2,7 @@ use std::borrow::Borrow;
 use std::io::ErrorKind;
 use elasticsearch::{Elasticsearch, Error, ScrollParts, SearchParts};
 use elasticsearch::cat::{CatIndices, CatIndicesParts};
+use elasticsearch::http::response::Response;
 use elasticsearch::http::StatusCode;
 use elasticsearch::http::transport::BuildError;
 use serde_json::{json, Value};
@@ -150,9 +151,24 @@ impl DistantClient {
     }
     // check if file name exists in the elasticsearch
     pub async fn check_if_exist(&self, index: Vec<&str>, file_name: &str) -> Result<bool, Error> {
+        let exists = self.search_by_filename(index, file_name, 0).await;
+        match exists {
+            Ok(result) => {
+                // Ok(result.hits.total.value > 0)
+                Ok(true)
+            }
+            Err(e) => {
+                println!("{:?}", e);
+                Err(e)
+            }
+        }
+    }
+
+    async fn search_by_filename(&self, index: Vec<&str>, file_name: &str, size: i64) -> Result<Value, Error> {
         let exists = self.client
             .search(SearchParts::Index(&index[..]))
-            .size(0)
+            .scroll("1d")
+            .size(size)
             .body(json! {
                 {
                    "query":
@@ -160,15 +176,17 @@ impl DistantClient {
                             {
                               "fileName.keyword": file_name
                             }
-                        }
-                }
+                        },
+                              "sort": [
+            ],
+                    }
             }).send().await;
         match exists {
             Ok(exists) => {
-                let response_body = exists.json::<CheckIfFileExistsResult>().await;
+                let response_body = exists.json::<Value>().await;
                 match response_body {
                     Ok(response_body) => {
-                        Ok(response_body.hits.total.value > 0)
+                        Ok(response_body)
                     }
                     Err(e) => {
                         println!("{:?}", e);
@@ -212,26 +230,26 @@ mod test {
 
         // assert result is not null
         assert!(result.is_ok());
-        assert!(result.unwrap().scroll_id.len() > 0);
+        assert!(result.unwrap().scroll_id.unwrap().len() > 0);
     }
 
     // test scroll
-    #[tokio::test]
-    async fn test_scroll() {
-        let distant_client = DistantClient::new().await;
-        let result = distant_client.search(
-            vec!["distant_rl_history"]
-            , "test").await;
-        let scroll_id_from_first = &result.as_ref().unwrap().scroll_id;
-        let scroll_result = distant_client.scroll(&scroll_id_from_first).await;
-        // write to file
-
-        // assert same scroll id
-        assert!(scroll_result.is_ok());
-        assert_eq!(scroll_id_from_first.as_ref(), scroll_result.as_ref().unwrap().scroll_id);
-        // assert different first result
-        assert_ne!(result.unwrap().hits.hits[0].id, scroll_result.as_ref().unwrap().hits.hits[0].id);
-    }
+    // #[tokio::test]
+    // async fn test_scroll() {
+    //     let distant_client = DistantClient::new().await;
+    //     let result = distant_client.search(
+    //         vec!["distant_rl_history"]
+    //         , "test").await;
+    //     let scroll_id_from_first = &result.as_ref().unwrap().scroll_id.unwrap().clone();
+    //     let scroll_result = distant_client.scroll(&scroll_id_from_first).await;
+    //     // write to file
+    //
+    //     // assert same scroll id
+    //     assert!(scroll_result.is_ok());
+    //     assert_eq!(scroll_id_from_first, scroll_result.as_ref().unwrap().scroll_id.unwrap().as_str());
+    //     // assert different first result
+    //     assert_ne!(result.unwrap().hits.hits[0].id, scroll_result.as_ref().unwrap().hits.hits[0].id);
+    // }
 
 
     // test list indices
@@ -262,6 +280,19 @@ mod test {
             vec!["distant_rl_history"]
             , "[R] [[JTArtificial08]] Jones, TimM - 2008 - Artificial intelligence - a systems approach.pd").await.unwrap();
         assert_eq!(result_not_found, false);
+    }
+
+    // test search by filename TODO: fix the mismatch result struct between the search and search by term
+    #[tokio::test]
+    async fn test_search_by_filename() {
+        let distant_client = DistantClient::new().await;
+        let result = distant_client.search_by_filename(
+            vec!["distant_rl_history"]
+            , "[R] [[JTArtificial08]] Jones, TimM - 2008 - Artificial intelligence - a systems approach.pdf", 100).await.expect("no result");
+        // write to file
+        let mut file = File::create("test_search_by_filename.json").unwrap();
+        file.write_all(result.to_string().as_bytes()).unwrap();
+        // assert_eq!(result.hits.total.value, 0);
     }
 }
 

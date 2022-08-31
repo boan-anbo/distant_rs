@@ -16,10 +16,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DistantSearchResult {
     #[serde(rename = "_scroll_id")]
-    pub scroll_id: String,
+    pub scroll_id: Option<String>,
 
     #[serde(rename = "_shards")]
-    pub shards: Shards,
+    pub shards: Option<Shards>,
 
     #[serde(rename = "hits")]
     pub hits: Hits,
