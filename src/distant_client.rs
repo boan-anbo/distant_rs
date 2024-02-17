@@ -470,8 +470,8 @@ mod test {
             vec!["distant_rl_history"]
             , "[R] [[JTArtificial08]] Jones, TimM - 2008 - Artificial intelligence - a systems approach.pdf", 100).await.expect("no result");
         // write to file
-        let mut file = File::create("test_search_by_filename.json").unwrap();
-        file.write_all(result.to_string().as_bytes()).unwrap();
+        // let mut file = File::create("test_search_by_filename.json").unwrap();
+        // file.write_all(result.to_string().as_bytes()).unwrap();
         // assert_eq!(result.hits.total.value, 0);
     }
 }
