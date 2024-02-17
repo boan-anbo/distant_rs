@@ -11,10 +11,69 @@
 //     let model: [object Object] = serde_json::from_str(&json).unwrap();
 // }
 
+use carrel_commons::carrel::shared::search::v1::{CarrelSearchResponse, CarrelSearchResult, CarrelSearchResultHighlight, CarrelSearchResultItem, CarrelSearchResultMetadata};
+use carrel_commons::generic::api::query::v1::SearchResultMetadata;
 use serde::{Deserialize, Serialize};
+use regex::Regex;
+
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref EM_REGEX: Regex = Regex::new(r"<em>(.*?)</em>").unwrap();
+}
+pub fn extract_em_content(input: &str) -> Vec<String> {
+    EM_REGEX.captures_iter(input)
+        .filter_map(|cap| cap.get(1))
+        .map(|match_| match_.as_str().to_string())
+        .collect()
+}
+impl From<DistantElasticSearchResult> for CarrelSearchResponse {
+    fn from(result: DistantElasticSearchResult) -> Self {
+        let mut carrel_search_results: Vec<CarrelSearchResult> = vec![];
+        let mut carrel_search_results_metadata: SearchResultMetadata = SearchResultMetadata {
+            result_total_items: result.hits.total.value as i32,
+            ..Default::default()
+        };
+        let hits = result.hits.hits;
+        for (index, hit) in hits.iter().enumerate() {
+            let source = hit.source.clone();
+            let carrel_search_result_item = source;
+            let highlights: Vec<CarrelSearchResultHighlight> = hit.highlight.as_ref() // Convert to reference
+                .map(|h| h.text.clone().unwrap_or_else(Vec::new)) // Work with reference
+                .unwrap_or_else(Vec::new) // Provide default for None
+                .iter()
+                .map(|text| CarrelSearchResultHighlight {
+                    field: "text".to_string(),
+                    text: text.clone(),
+                }).collect();
+            let highlights_extracted: Vec<String> = highlights
+                .iter()
+                .flat_map(|highlight| extract_em_content(&highlight.text))
+                .collect();
+            let metadata: CarrelSearchResultMetadata = CarrelSearchResultMetadata {
+                index: index as i32,
+                score: hit.score as f32,
+                highlights,
+                highlights_extracted,
+            };
+            let carrel_search_result = CarrelSearchResult {
+                result: Some(carrel_search_result_item),
+                data: None,
+                metadata: Some(metadata),
+            };
+
+            carrel_search_results.push(carrel_search_result);
+        }
+
+        CarrelSearchResponse {
+            metadata: Some(carrel_search_results_metadata),
+            results: carrel_search_results,
+        }
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct DistantSearchResult {
+pub struct DistantElasticSearchResult {
     #[serde(rename = "_scroll_id")]
     pub scroll_id: Option<String>,
 
@@ -37,7 +96,7 @@ pub struct Hits {
     pub hits: Vec<Hit>,
 
     #[serde(rename = "max_score")]
-    pub max_score: f64,
+    pub max_score: Option<f64>,
 
     #[serde(rename = "total")]
     pub total: Total,
@@ -55,55 +114,34 @@ pub struct Hit {
     pub score: f64,
 
     #[serde(rename = "_source")]
-    pub source: Source,
+    pub source: CarrelSearchResultItem,
 
     #[serde(rename = "_type")]
     pub hit_type: Type,
 
     #[serde(rename = "highlight")]
-    pub highlight: Highlight,
+    pub highlight: Option<Highlight>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Highlight {
     #[serde(rename = "text")]
-    pub text: Vec<String>,
+    pub text: Option<Vec<String>>,
 
-    #[serde(rename = "fileName")]
-    pub file_name: Option<Vec<String>>,
+    #[serde(rename = "title")]
+    pub title: Option<Vec<String>>,
+
+    #[serde(rename = "filePath")]
+    pub context: Option<Vec<String>>,
+
+    #[serde(rename = "sourceName")]
+    pub source_name: Option<Vec<String>>,
 
     #[serde(rename = "filePath")]
     pub file_path: Option<Vec<String>>,
-}
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Source {
-    #[serde(rename = "citeKey")]
-    pub cite_key: String,
-
-    #[serde(rename = "created")]
-    pub created: Option<i64>,
-
-    #[serde(rename = "fileName")]
-    pub file_name: String,
-
-    #[serde(rename = "filePath")]
-    pub file_path: String,
-
-    #[serde(rename = "modified")]
-    pub modified: Option<i64>,
-
-    #[serde(rename = "pageIndex")]
-    pub page_index: i64,
-
-    #[serde(rename = "pages")]
-    pub pages: i64,
-
-    #[serde(rename = "text")]
-    pub text: String,
-
-    #[serde(rename = "uuid")]
-    pub uuid: String,
+    #[serde(rename = "uniqueId")]
+    pub unique_id: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -134,5 +172,15 @@ pub struct Shards {
 pub enum Type {
     #[serde(rename = "pdf")]
     Pdf,
+}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn test_extract_em_content() {
+        let input = "<em>hello</em> <em>world</em>";
+        let output = super::extract_em_content(input);
+        assert_eq!(output, vec!["hello", "world"]);
+    }
 }
 
